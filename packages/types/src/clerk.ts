@@ -143,6 +143,9 @@ export interface Clerk {
 
   telemetry: TelemetryCollector | undefined;
 
+  /** Check if coinbase wallet is enabled. */
+  isCoinbaseWalletEnabled: boolean;
+
   __internal_country?: string | null;
 
   /**
@@ -606,6 +609,8 @@ export interface Clerk {
    * This funtion is used to reload the initial resources (Environment/Client) from the Frontend API.
    **/
   __internal_reloadInitialResources: () => Promise<void>;
+
+  prefetchDependencies: () => Promise<void>;
 }
 
 export type HandleOAuthCallbackParams = TransferableOption &

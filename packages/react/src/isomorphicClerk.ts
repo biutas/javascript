@@ -123,6 +123,7 @@ type IsomorphicLoadedClerk = Without<
   | 'client'
   | '__internal_getCachedResources'
   | '__internal_reloadInitialResources'
+  | 'prefetchDependencies'
 > & {
   // TODO: Align return type and parms
   handleRedirectCallback: (params: HandleOAuthCallbackParams) => void;
@@ -173,6 +174,7 @@ type IsomorphicLoadedClerk = Without<
   mountSignIn: (node: HTMLDivElement, props: SignInProps) => void;
   mountUserProfile: (node: HTMLDivElement, props: UserProfileProps) => void;
   mountWaitlist: (node: HTMLDivElement, props: WaitlistProps) => void;
+  prefetchDependencies: () => void;
   client: ClientResource | undefined;
 };
 
@@ -1212,6 +1214,15 @@ export class IsomorphicClerk implements IsomorphicLoadedClerk {
       return callback() as Promise<void>;
     } else {
       this.premountMethodCalls.set('signOut', callback);
+    }
+  };
+
+  prefetchDependencies = async (): Promise<void> => {
+    const callback = () => this.clerkjs?.prefetchDependencies();
+    if (this.clerkjs && this.#loaded) {
+      return callback() as Promise<void>;
+    } else {
+      this.premountMethodCalls.set('prefetchDependencies', callback);
     }
   };
 }

@@ -7,7 +7,7 @@ import { logger } from '@clerk/shared/logger';
 import { isHttpOrHttps, isValidProxyUrl, proxyUrlToAbsoluteURL } from '@clerk/shared/proxy';
 import { eventPrebuiltComponentMounted, TelemetryCollector } from '@clerk/shared/telemetry';
 import { addClerkPrefix, stripScheme } from '@clerk/shared/url';
-import { handleValueOrFn, noop } from '@clerk/shared/utils';
+import { createDeferredPromise, handleValueOrFn, noop } from '@clerk/shared/utils';
 import type {
   __internal_UserVerificationModalProps,
   ActiveSessionResource,
@@ -65,7 +65,9 @@ import type {
   WaitlistProps,
   WaitlistResource,
   Web3Provider,
+  Web3Strategy,
 } from '@clerk/types';
+import type CoinbaseWalletSDK from '@coinbase/wallet-sdk';
 
 import type { MountComponentRenderer } from '../ui/Components';
 import { UI } from '../ui/new';
@@ -138,6 +140,7 @@ declare global {
     __clerk_publishable_key?: string;
     __clerk_proxy_url?: ClerkInterface['proxyUrl'];
     __clerk_domain?: ClerkInterface['domain'];
+    __clerk_coinbase_sdk: Promise<typeof CoinbaseWalletSDK>;
   }
 }
 
@@ -180,6 +183,7 @@ export class Clerk implements ClerkInterface {
   protected internal_last_error: ClerkAPIError | null = null;
   // converted to protected environment to support `updateEnvironment` type assertion
   protected environment?: EnvironmentResource | null;
+  private __promise = createDeferredPromise();
 
   #publishableKey = '';
   #domain: DomainOrProxyUrl['domain'];
@@ -245,6 +249,20 @@ export class Clerk implements ClerkInterface {
       return handleValueOrFn(this.#options.isSatellite, new URL(window.location.href), false);
     }
     return false;
+  }
+
+  get isCoinbaseWalletEnabled(): boolean {
+    const attributes = this.environment?.userSettings.attributes;
+    if (!attributes) {
+      return false;
+    }
+
+    const findWeb3Attributes = Object.entries(attributes)
+      .filter(([name, attr]) => attr.used_for_first_factor && name.startsWith('web3'))
+      .map(([, desc]) => desc.first_factors)
+      .flat() as any as Web3Strategy[];
+
+    return findWeb3Attributes.includes('web3_coinbase_wallet_signature');
   }
 
   get domain(): string {
@@ -1654,6 +1672,16 @@ export class Clerk implements ClerkInterface {
     this.environment = environment;
   }
 
+  public prefetchDependencies = async (): Promise<void> => {
+    if (this.isCoinbaseWalletEnabled) {
+      window.__clerk_coinbase_sdk = this.__promise.promise as Promise<typeof CoinbaseWalletSDK>;
+
+      await import('@coinbase/wallet-sdk').then(mod => {
+        this.__promise.resolve(mod.CoinbaseWalletSDK);
+      });
+    }
+  };
+
   __internal_setCountry = (country: string | null) => {
     if (!this.__internal_country) {
       this.__internal_country = country;
@@ -1906,6 +1934,8 @@ export class Clerk implements ClerkInterface {
         if (await this.#redirectFAPIInitiatedFlow()) {
           return false;
         }
+
+        void this.prefetchDependencies();
 
         initComponents();
 
